@@ -81,7 +81,7 @@ def deliver_passively(msg):
   delivered_passively.add(frozenset(msg.items()))
 
 # TODO: make work for any `size`
-correct = { 1: True, 2: True, 3: True}
+correct = dict([(i, True) for i in range(1, size)])
 
 def mark_incorrect(rank_of_incorrect):
   correct[rank_of_incorrect] = False
@@ -89,7 +89,7 @@ def mark_incorrect(rank_of_incorrect):
 def is_correct(tested_rank):
   return correct[tested_rank]
 
-fromi = { 1: set(), 2: set(), 3: set() }
+fromi = dict([(i, set()) for i in range(1, size)])
 
 def save_delivered_passively(msg, origin):
   hashableMsg = frozenset(msg.items())
