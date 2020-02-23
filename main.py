@@ -54,14 +54,16 @@ def make_create_message():
 
 create_message = make_create_message()
 
-def create_packet(data, origin):
-  message = create_message(data)
-  return { 'message': message, 'origin': origin }
-
 
 # ACTIVE BROADCAST STUFF
 
-# ...
+delivered_actively = set()
+
+def was_delivered_actively(msg):
+  return frozenset(msg.items()) in delivered_actively
+
+def deliver_actively(msg):
+  delivered_actively.add(frozenset(msg.items()))
 
 # PASSIVE BROADCAST STUFF
 
@@ -78,42 +80,66 @@ if rank == 0:
 
     if input != None:
       receiver, tag, data = input
-      packetOut = create_packet(data, rank)
-      comm.send(packetOut, dest = receiver, tag = tag)
+      msgOut = create_message(data)
+      pcktOut = create_packet(msgOut, rank)
+      comm.send(pcktOut, dest = receiver, tag = tag)
 
 else:
   state = RUNNING
 
   while state != FINISHED:
     status = MPI.Status()
-    packetIn = comm.recv(status=status)
+    pcktIn = comm.recv(status=status)
     tag = status.tag
     source = status.source
-    data = packetIn['message']['data']
+
+    # debug(pcktIn)
+
+    msgIn = pcktIn['data']
+    data = msgIn['data']
+    origin = pcktIn['origin']
+
 
     if tag == START_ACTIVE:
       debug("Rozpoczynam aktywny broadcast '{}'".format(data))
+
+      msgOut = create_message(data)
+      pcktOut = create_packet(msgOut, rank)
+      deliver_actively(msgOut)
       for process in range(1, size):
-        packetOut = create_packet(data, rank)
-        comm.send(packetOut, dest = process, tag = ACTIVE)
+        comm.send(pcktOut, dest = process, tag = ACTIVE)
+
 
     elif tag == ACTIVE:
-      debug("Dostalem aktywny broadcast od {} z danymi '{}'".format(source, data))
+      if not was_delivered_actively(msgIn):
+        debug("DOSTARCZAM aktywny broadcast od {} z danymi '{}' zainicjowany przez {}".format(source, data, origin))
+
+        deliver_actively(msgIn)
+
+        for process in range(1, size):
+          comm.send(pcktIn, dest = process, tag = ACTIVE)
+
+      else:
+        debug("IGNORUJE aktywny broadcast od {} z danymi '{}' zainicjowany przez {}".format(source, data, origin))
+
+
 
     elif tag == START_PASSIVE:
       debug("Rozpoczynam pasywny broadcast")
 
+
     elif tag == PASSIVE:
       debug("Dostalem pasywny broadcast od {}".format(source))
+
 
     elif tag == FAILURE:
       debug("{} ulegl awarii".format(source))
 
+
     elif tag == FAIL:
       debug("Umieram...")
 
-      packetOut = create_packet("", rank)
       for process in range(1, size):
-        comm.send(packetOut, dest = process, tag = FAILURE)
+        comm.send("", dest = process, tag = FAILURE)
 
       state = FINISHED
