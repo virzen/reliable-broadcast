@@ -1,5 +1,8 @@
 import sys
+import random
 from mpi4py import MPI
+
+CHANCE_OF_FAILURE = 20
 
 # MPI INIT
 
@@ -103,6 +106,9 @@ def get_saved_from(source):
 
 debug("Gotowy")
 
+state = RUNNING
+
+
 if rank == 0:
   while True:
     input = get_input()
@@ -114,7 +120,25 @@ if rank == 0:
       comm.send(pcktOut, dest = receiver, tag = tag)
 
 else:
-  state = RUNNING
+  def die():
+    debug("Umieram...")
+
+    for process in range(1, size):
+      msgOut = create_message("")
+      pcktOut = create_packet(msgOut, rank)
+      comm.send(pcktOut, dest = process, tag = FAILURE)
+
+    global state
+    state = FINISHED
+
+  def best_effort_broadcast_with_dying(data, tag):
+    for process in range(1, size):
+      if random.randint(0, 100) < CHANCE_OF_FAILURE:
+        die()
+        break
+      else:
+        comm.send(data, dest = process, tag = tag)
+
 
   while state != FINISHED:
     status = MPI.Status()
@@ -135,8 +159,7 @@ else:
       msgOut = create_message(data)
       pcktOut = create_packet(msgOut, rank)
       deliver_actively(msgOut)
-      for process in range(1, size):
-        comm.send(pcktOut, dest = process, tag = ACTIVE)
+      best_effort_broadcast_with_dying(pcktOut, ACTIVE)
 
 
     elif tag == ACTIVE:
@@ -159,7 +182,7 @@ else:
       msgOut = create_message(data)
       pcktOut = create_packet(msgOut, rank)
 
-      best_effort_broadcast(pcktOut, PASSIVE)
+      best_effort_broadcast_with_dying(pcktOut, PASSIVE)
 
 
     elif tag == PASSIVE:
@@ -186,11 +209,4 @@ else:
 
 
     elif tag == FAIL:
-      debug("Umieram...")
-
-      for process in range(1, size):
-        msgOut = create_message("")
-        pcktOut = create_packet(msgOut, rank)
-        comm.send(pcktOut, dest = process, tag = FAILURE)
-
-      state = FINISHED
+      die()
